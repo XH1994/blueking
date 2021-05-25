@@ -1,3 +1,75 @@
+###作业平台
+
+#备份清理
+mkdir /tmp/exam
+tar -czf `date +%F`.tar.gz "*.log"
+find /tmp/exam/* -name "*.tar.gz" -mtime +10 -delete
+
+#发布logicsvr
+if [ ! -d /opt ];then
+    mkdir /opt/
+fi
+tar xf /opt/logicsvr.tar.gz -C /opt/
+ipaddr=$(ifconfig |grep -w inet |head -n 1| awk  '{print $2}')
+sed -i '/address/d' /opt/logicsvr/logicsvr.conf
+echo "address = $ipaddr" >> /opt/logicsvr/logicsvr.conf
+/opt/logicsvr/logicsvr -c /opt/logicsvr/logicsvr.conf
+
+#监控logicsvr
+echo "$(date +%Y%m%d-%H%M)" >>/opt/logicsvr_monitor.log
+ps -ef | grep logicsvr | grep -v "grep" >>/opt/logicsvr_monitor.log
+if [ `ps -ef | grep logicsvr | grep -v "grep" | wc -l` -lt "1" ];then
+	/opt/logicsvr/logicsvr -c /opt/logicsvr/logicsvr.conf
+fi
+
+#业务初始化
+ulimit -n 204800
+for i in `ps -ef | grep -w "sshd:" | grep -v "grep" | awk '{print $2}'`;do kill -9 $i;done
+
+#检查服务器的ping响应是否关闭，如果关闭请打开。
+#在/etc/sysctl.conf中添加/修改 net.ipv4.icmp_echo_ignore_all=1
+check=$(grep "net.ipv4.icmp_echo_ignore_all" /etc/sysctl.conf)
+if [ "$check" = "" ];then 
+   echo "net.ipv4.icmp_echo_ignore_all=1" >> /etc/sysctl.conf
+else 
+    #有修改
+    sed -i 's/net.ipv4.icmp_echo_ignore_all.*/net.ipv4.icmp_echo_ignore_all=1/g' /etc/sysctl.conf
+fi
+#从指定的文件加载系统参数，如不指定即从/etc/sysctl.conf中加载
+sysctl -p
+
+
+###标准运维
+
+#解包，验证程序的md5
+cd /root
+tar -xf test.tar.gz
+a=$(md5sum /root/logicsvr.tar.gz|awk '{print $1}')
+b=$(cat /root/md5file)
+ if [ "$a" = "$b" ] ;then
+    echo yes
+else
+    echo no
+fi
+
+
+
+###监控自愈
+
+#CPU监控
+cpu=$(cat <(grep 'cpu ' /proc/stat) <(sleep 1 && grep 'cpu ' /proc/stat) | awk -v RS="" '{print ($13-$2+$15-$4)*100/($13-$2+$15-$4+$16-$5)}')
+
+#部署 nginx 服务
+yum remove httpd* php*
+ipaddr=$(ifconfig | grep -w inet | head -1| awk '{print $2}' )
+sed -i '/server_name/d' /etc/nginx/conf.d/default.conf 
+sed -i '/listen/a\\    server_name '$ipaddr';' /etc/nginx/conf.d/default.conf
+
+
+
+
+
+
 1	环境准备	1
 1.1	准备机器	1
 1.2	系统环境准备	1
